@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Vehicle {
+  id          String   @id @default(uuid())
+  name        String
+  brand       String
+  modelNumber String?
+  seats       Int?
+  type        String   // road, air, waterway
+  length      Float
+  width       Float
+  height      Float
+  maxWeight   Float
+  maxVolume   Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cargos      Cargo[]
+  routes      Route[]
+}
+
+model Cargo {
+  id          String   @id @default(uuid())
+  name        String
+  weight      Float
+  length      Float
+  width       Float
+  height      Float
+  stackable   Boolean  @default(false)
+  rotatable   Boolean  @default(false)
+  position    Json?    // {x: number, y: number, z: number}
+  rotation    Float    @default(0)
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Route {
+  id          String   @id @default(uuid())
+  name        String
+  startPoint  Json     // {lat: number, lng: number}
+  endPoint    Json     // {lat: number, lng: number}
+  waypoints   Json[]   // [{lat: number, lng: number}]
+  distance    Float
+  duration    Float
+  emissions   Float
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  action      String
+  details     Json
+  createdAt   DateTime @default(now())
+}

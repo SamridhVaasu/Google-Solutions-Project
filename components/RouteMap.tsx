@@ -5,59 +5,62 @@ import { useCargoStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { getDirections } from "@/lib/maps-api";
+import { geocodeAddress, fleetPlanner } from "@/lib/maps-api";
+import MapRenderer from "@/components/MapRenderer";
 
 export default function RouteMap() {
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [isCalculating, setIsCalculating] = useState(false);
-  const [routeData, setRouteData] = useState<any>(null);
-  const { selectedVehicle, setRoutes } = useCargoStore();
+  const [routes, setRoutes] = useState<any[]>([]);
+  const { selectedVehicle, cargos } = useCargoStore();
 
-  const calculateRoute = async () => {
-    if (!origin || !destination) return;
+  const calculateRoutes = async () => {
+    if (!origin || !destination) {
+      toast({ title: "Error", description: "Both origin and destination are required", variant: "destructive" });
+      return;
+    }
+
     setIsCalculating(true);
 
     try {
-      const result = await getDirections(origin, destination);
-      const route = result.routes[0];
+      // Geocode origin and destination
+      const originCoords = await geocodeAddress(origin);
+      const destinationCoords = await geocodeAddress(destination);
 
-      if (selectedVehicle && route) {
-        const response = await fetch("/api/routes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: `${origin} to ${destination}`,
-            startPoint: { 
-              lat: route.bounds.northeast.lat, 
-              lng: route.bounds.northeast.lng 
-            },
-            endPoint: { 
-              lat: route.bounds.southwest.lat, 
-              lng: route.bounds.southwest.lng 
-            },
-            distance: route.distance,
-            duration: route.duration,
-            vehicleId: selectedVehicle.id,
-            emissions: calculateEmissions(route.distance),
-          }),
-        });
-
-        if (!response.ok) throw new Error("Failed to save route");
-        
-        const savedRoute = await response.json();
-        setRoutes([savedRoute]);
-        setRouteData(route);
-        toast({
-          title: "Route calculated successfully",
-          description: `Distance: ${route.distance}m, Duration: ${route.duration}s`,
-        });
+      if (!originCoords || !destinationCoords) {
+        throw new Error("Failed to geocode addresses");
       }
+
+      // Prepare data for Fleet Planner API
+      const fleetPlannerData = {
+        packages: cargos.map((cargo) => ({
+          id: cargo.id,
+          weightInGrams: cargo.weight * 1000,
+          loadingLocation: originCoords,
+          unloadingLocation: destinationCoords,
+        })),
+        vehicles: [
+          {
+            id: selectedVehicle?.id || "default-vehicle",
+            capacityInKG: selectedVehicle?.maxWeight || 1000,
+            startTime: { hour: 8, minutes: 0 },
+            endTime: { hour: 18, minutes: 0 },
+          },
+        ],
+      };
+
+      const fleetPlannerResponse = await fleetPlanner(fleetPlannerData);
+
+      // Update routes
+      setRoutes(fleetPlannerResponse.routes);
+
+      toast({ title: "Success", description: "Routes calculated successfully", variant: "default" });
     } catch (error) {
       console.error("Route calculation error:", error);
       toast({
-        title: "Error calculating route",
-        description: "Please try again with valid locations",
+        title: "Error calculating routes",
+        description: "Please try again with valid addresses",
         variant: "destructive",
       });
     } finally {
@@ -65,44 +68,48 @@ export default function RouteMap() {
     }
   };
 
-  const calculateEmissions = (distance: number) => {
-    const emissionsFactor = 120; // Example factor
-    return (distance / 1000) * emissionsFactor;
-  };
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Input
-            placeholder="Origin"
+            placeholder="Origin Address"
             value={origin}
             onChange={(e) => setOrigin(e.target.value)}
           />
         </div>
         <div>
           <Input
-            placeholder="Destination"
+            placeholder="Destination Address"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
           />
         </div>
       </div>
 
-      <Button 
-        onClick={calculateRoute} 
+      <Button
+        onClick={calculateRoutes}
         disabled={!origin || !destination || isCalculating}
       >
-        {isCalculating ? "Calculating..." : "Calculate Route"}
+        {isCalculating ? "Calculating..." : "Calculate Routes"}
       </Button>
 
-      {routeData && (
+      {routes.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-lg font-medium">Route Details</h3>
-          <p>Distance: {routeData.distance} meters</p>
-          <p>Duration: {routeData.duration} seconds</p>
+          <h3 className="text-lg font-medium">Optimized Routes</h3>
+          <ul>
+            {routes.map((route, index) => (
+              <li key={index}>
+                Vehicle {route.vehicleId}: {route.waypoints.map((wp) => `(${wp.location.lat}, ${wp.location.lng})`).join(" -> ")}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
+
+      <div className="mt-4 h-96">
+       <MapRenderer/>
+      </div>
     </div>
   );
 }

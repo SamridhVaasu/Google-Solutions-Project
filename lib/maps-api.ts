@@ -17,6 +17,27 @@ interface RouteResponse {
   }>;
 }
 
+export interface GeocodeResponse {
+  results: Array<{
+    geometry: {
+      location: {
+        lat: number;
+        lng: number;
+      };
+    };
+  }>;
+}
+
+export interface FleetPlannerResponse {
+  routes: Array<{
+    vehicleId: string;
+    waypoints: Array<{
+      location: { lat: number; lng: number };
+      sequence: number;
+    }>;
+  }>;
+}
+
 export async function getDirections(origin: string, destination: string) {
   const [originLat, originLng] = origin.split(',');
   const [destLat, destLng] = destination.split(',');
@@ -34,4 +55,53 @@ export async function getDirections(origin: string, destination: string) {
 
   if (!response.ok) throw new Error('Failed to fetch directions');
   return response.json() as Promise<RouteResponse>;
+}
+
+export async function textSearch(query: string): Promise<any> {
+  const response = await fetch(
+    `https://api.olamaps.io/places/v1/textsearch?input=${encodeURIComponent(query)}&api_key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`,
+    { method: "GET" }
+  );
+
+  if (!response.ok) throw new Error("Failed to fetch text search results");
+  return response.json();
+}
+
+export async function autocomplete(query: string): Promise<any> {
+  const response = await fetch(
+    `https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(query)}&api_key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`,
+    { method: "GET" }
+  );
+
+  if (!response.ok) throw new Error("Failed to fetch autocomplete results");
+  return response.json();
+}
+
+export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const response = await fetch(
+    `https://api.olamaps.io/places/v1/geocode?address=${encodeURIComponent(address)}&api_key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`,
+    { method: "GET" }
+  );
+
+  if (!response.ok) throw new Error("Failed to fetch geocoding data");
+  const data: GeocodeResponse = await response.json();
+  if (data.results.length > 0) {
+    const { lat, lng } = data.results[0].geometry.location;
+    return { lat, lng };
+  }
+  return null;
+}
+
+export async function fleetPlanner(data: any): Promise<FleetPlannerResponse> {
+  const response = await fetch(
+    `https://api.olamaps.io/routing/v1/fleetPlanner?strategy=fair&api_key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) throw new Error("Failed to fetch fleet planner results");
+  return response.json();
 }

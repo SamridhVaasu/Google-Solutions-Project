@@ -78,18 +78,45 @@ export async function autocomplete(query: string): Promise<any> {
 }
 
 export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  const response = await fetch(
-    `https://api.olamaps.io/places/v1/geocode?address=${encodeURIComponent(address)}&api_key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`,
-    { method: "GET" }
-  );
+  try {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("API key is missing");
+      return null;
+    }
 
-  if (!response.ok) throw new Error("Failed to fetch geocoding data");
-  const data: GeocodeResponse = await response.json();
-  if (data.results.length > 0) {
-    const { lat, lng } = data.results[0].geometry.location;
-    return { lat, lng };
+    console.log("Geocoding address:", address);
+    
+    const response = await fetch(
+      `https://api.olamaps.io/places/v1/geocode?address=${encodeURIComponent(address)}&api_key=${apiKey}`,
+      { 
+        method: "GET",
+        headers: {
+          "X-Request-Id": crypto.randomUUID(),
+        } 
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Geocoding API error: ${response.status} ${response.statusText}`);
+      if (response.status === 401) {
+        console.error("Authentication failed. Check your API key.");
+      }
+      throw new Error(`Geocoding API returned ${response.status}`);
+    }
+
+    const data: GeocodeResponse = await response.json();
+    if (data.results && data.results.length > 0) {
+      const { lat, lng } = data.results[0].geometry.location;
+      return { lat, lng };
+    }
+
+    console.warn("No results found for address:", address);
+    return null;
+  } catch (error) {
+    console.error("Geocoding error:", error);
+    return null;
   }
-  return null;
 }
 
 export async function fleetPlanner(data: any): Promise<FleetPlannerResponse> {

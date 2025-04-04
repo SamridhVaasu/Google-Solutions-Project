@@ -1,19 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useCargoStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { geocodeAddress, fleetPlanner } from "@/lib/maps-api";
-import MapRenderer from "@/components/MapRenderer";
+import dynamic from 'next/dynamic';
+
+// Import MapRenderer component with no SSR
+const MapRenderer = dynamic(() => import('@/components/MapRenderer'), {
+  ssr: false,
+  loading: () => <div className="h-96 bg-gray-100 flex items-center justify-center">Loading map...</div>
+});
 
 export default function RouteMap() {
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [isCalculating, setIsCalculating] = useState(false);
   const [routes, setRoutes] = useState<any[]>([]);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([77.61648476788898, 12.931423492103944]);
+  const [mapZoom, setMapZoom] = useState<number>(12);
+  const [isMounted, setIsMounted] = useState(false);
   const { selectedVehicle, cargos } = useCargoStore();
+
+  // Only run on client side
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const calculateRoutes = async () => {
     if (!origin || !destination) {
@@ -31,6 +45,12 @@ export default function RouteMap() {
       if (!originCoords || !destinationCoords) {
         throw new Error("Failed to geocode addresses");
       }
+
+      // Update the map center to the midpoint of the route
+      setMapCenter([
+        (originCoords.lat + destinationCoords.lat) / 2,
+        (originCoords.lng + destinationCoords.lng) / 2,
+      ]);
 
       // Prepare data for Fleet Planner API
       const fleetPlannerData = {
@@ -67,6 +87,11 @@ export default function RouteMap() {
       setIsCalculating(false);
     }
   };
+
+  // Don't render anything during SSR
+  if (!isMounted) {
+    return <div className="h-96 bg-gray-100"></div>;
+  }
 
   return (
     <div className="space-y-4">
@@ -107,8 +132,8 @@ export default function RouteMap() {
         </div>
       )}
 
-      <div className="mt-4 h-96">
-       <MapRenderer/>
+      <div className="mt-4 h-96 border rounded-lg overflow-hidden">
+        <MapRenderer center={mapCenter} zoom={mapZoom} />
       </div>
     </div>
   );
